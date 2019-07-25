@@ -37,7 +37,7 @@ echo "Enter [i] to initialize a new database"
 read CLEAR
 
 if [[ $CLEAR == "i" ]]; then
-    sqlite3 data.sqlite < schema.sql 
+    sqlite3 data.sqlite < schema.sql
     chmod 600 data.sqlite
 fi
 

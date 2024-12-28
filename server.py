@@ -1,5 +1,8 @@
 from src.exceptions import BBJException, BBJParameterError, BBJUserError
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 from src import db, schema, formatting
+from os.path import abspath
+from hashlib import sha256
 from functools import wraps
 from uuid import uuid1
 from sys import argv
@@ -9,6 +12,8 @@ import sqlite3
 import json
 
 dbname = "data.sqlite"
+template_environment = Environment(loader=FileSystemLoader("templates/"), autoescape=select_autoescape())
+
 
 # any values here may be overrided in the config.json. Any values not listed
 # here will have no effect on the server.
@@ -123,6 +128,12 @@ def api_method(function):
     return wrapper
 
 
+# def html_method(function):
+#     """
+#     Wrapper function for HTML methods.
+#     """
+#     pass
+
 def create_usermap(connection, obj, index=False):
     """
     Creates a mapping of all the user_ids that occur in OBJ to
@@ -221,6 +232,25 @@ class API(object):
     user_register.arglist = (
         ("user_name", "string: the desired display name"),
         ("auth_hash", "string: a sha256 hash of a password")
+    )
+
+    @api_method
+    def reset_user_password(self, args, database, user, **kwargs):
+        """
+        Caller must be logged in and set as admin. Calling this endpoint
+        will set the `user` (user_id or user_name) account password to
+        an empty string.
+        """
+        validate(args, ["user"])
+        if user["is_admin"]:
+            user = db.user_resolve(database, args["user"])
+            # hash an empty string
+            auth_hash = sha256(bytes("", "utf8")).hexdigest()
+            return db.user_update(database, user, {"auth_hash": auth_hash})
+        raise BBJUserError("non-admin attempt to reset a user's password")
+    reset_user_password.doctype = "Users"
+    reset_user_password.arglist = (
+        ("user", "string: a user_name or user_id")
     )
 
     @api_method
@@ -372,7 +402,7 @@ class API(object):
         instead use their `last_mod` attribute if you intend to list them
         out visually.
         """
-        # XXX: Update with new formatting documentation for arg `format`
+        # TODO: Update with new formatting documentation for arg `format`
         validate(args, ["time"])
         feed = db.message_feed(database, args["time"])
 
@@ -455,7 +485,7 @@ class API(object):
     thread_load.arglist = (
         ("thread_id", "string: the thread to load."),
         ("OPTIONAL: op_only", "boolean: include only the original message in `messages`"),
-        # XXX formal formatting documentation is desperately needed
+        # formal formatting documentation is desperately needed
         ("OPTIONAL: format", "string: the formatting type of the returned messages.")
     )
 
@@ -595,7 +625,7 @@ class API(object):
     format_message.doctype = "Tools"
     format_message.arglist = (
         ("body", "string: the message body to apply formatting to."),
-        # XXX: remember to update this with new formatting docs
+        # remember to update this with new formatting docs
         ("format", "string: the specifier for the desired formatting engine")
     )
 
@@ -664,6 +694,247 @@ class API(object):
          "response instead of a special object.")
     )
 
+testing = None
+
+class HTML(object):
+    """
+    This object contains all of the endpoints for the HTML application.
+    This is not a full javascript fronted developed with a framework like React.
+    If you want a more modern implementation, a fully javascript-based client
+    can be developed. But the server will not have one built in.
+    """
+
+    def __init__(self):
+        self.themes = [
+            "base",
+            "9x1"
+        ]
+
+    def get_theme(self, request):
+        cookie = request.cookie
+        if "theme" in cookie and cookie["theme"].value in self.themes:
+            return cookie["theme"].value
+        return "base"
+
+    @cherrypy.expose
+    def account(self, username=None, password=None, color=None, updateUsername=None,
+                updatePassword=None, passwordConfirmation=None):
+        database = sqlite3.connect(dbname)
+        cookie = cherrypy.request.cookie
+        if username and password:
+            user = db.user_resolve(database, username)
+            auth_hash = sha256(bytes(password, "utf8")).hexdigest()
+            if not user:
+                return "User not registered"
+            elif auth_hash.lower() != user["auth_hash"].lower():
+                return "Authorization info incorrect."
+            cherrypy.response.cookie["username"] = username
+            cherrypy.response.cookie["username"]["max-age"] = 34560000
+            cherrypy.response.cookie["auth_hash"] = auth_hash
+            cherrypy.response.cookie["auth_hash"]["max-age"] = 34560000
+            raise cherrypy.HTTPRedirect("/index")
+
+        if "username" in cookie and "auth_hash" in cookie:
+            user = db.user_resolve(database, cookie["username"].value)
+            if user and cookie["auth_hash"].value.lower() == user["auth_hash"]:
+                authorized_user = user
+                if color:
+                    try:
+                        color_number = int(color)
+                        if color_number in (0, 1, 2, 3, 4, 5, 6):
+                            db.user_update(database, authorized_user, {"color": color_number})
+                            raise cherrypy.HTTPRedirect("/account")
+                    except ValueError:
+                        return "Color must be a number, 0-6"
+                elif updateUsername:
+                    try:
+                        db.validate([["user_name", updateUsername]])
+                        update = db.user_update(database, authorized_user, {"user_name": updateUsername})
+                        cherrypy.response.cookie["username"] = update["user_name"]
+                        cherrypy.response.cookie["username"]["max-age"] = 34560000
+                        raise cherrypy.HTTPRedirect("/account")
+                    except BBJUserError as e:
+                        return e.description
+                elif updatePassword and passwordConfirmation:
+                    if len(updatePassword) > 4096:
+                        return "Password is too long."
+                    elif updatePassword != passwordConfirmation:
+                        return "Password and password confirmation do not match."
+                    auth_hash = sha256(bytes(updatePassword, "utf8")).hexdigest()
+                    try:
+                        db.validate([["auth_hash", auth_hash]])
+                        update = db.user_update(database, authorized_user, {"auth_hash": auth_hash})
+                        cherrypy.response.cookie["auth_hash"] = update["auth_hash"]
+                        cherrypy.response.cookie["auth_hash"]["max-age"] = 34560000
+                    except BBJParameterError:
+                        return e.description
+            else:
+                authorized_user = None
+        else:
+            authorized_user = None
+        theme = self.get_theme(cherrypy.request)
+        template = template_environment.get_template("account.html")
+        variables = {
+            "authorized_user": authorized_user,
+            "theme": theme,
+            "available_themes": self.themes
+        }
+        return template.render(variables)
+
+    @cherrypy.expose
+    def setTheme(self, themeName=None):
+        if themeName in self.themes:
+            cherrypy.response.cookie["theme"] = themeName
+            cherrypy.response.cookie["theme"]["max-age"] = 34560000
+            raise cherrypy.HTTPRedirect("/account")
+        else:
+            return "Theme name not supplied or defined on server."
+
+    @cherrypy.expose
+    def logout(self):
+        cookie_in = cherrypy.request.cookie
+        if "username" in cookie_in and "auth_hash" in cookie_in:
+            cherrypy.response.cookie["username"] = ""
+            cherrypy.response.cookie["username"]["expires"] = 0
+            cherrypy.response.cookie["auth_hash"] = ""
+            cherrypy.response.cookie["auth_hash"]["expires"] = 0
+        raise cherrypy.HTTPRedirect("/index")
+
+
+    @cherrypy.expose
+    def setBookmark(self, bookmarkId=None, delBookmark=None):
+        if "bookmarks" in cherrypy.request.cookie:
+            bookmarks = json.loads(cherrypy.request.cookie["bookmarks"].value)
+        else:
+            bookmarks = []
+
+        database = sqlite3.connect(dbname)
+        threads = db.thread_index(database)
+
+        if bookmarkId:
+            if bookmarkId in [thread["thread_id"] for thread in threads]:
+                bookmarks.append(bookmarkId)
+        elif delBookmark:
+            if delBookmark in bookmarks:
+                bookmarks.remove(delBookmark)
+
+        cherrypy.response.cookie["bookmarks"] = json.dumps(bookmarks)
+        cherrypy.response.cookie["bookmarks"]["max-age"] = 34560000
+        raise cherrypy.HTTPRedirect("/index")
+
+
+    @cherrypy.expose
+    def index(self, bookmarkId=None, delBookmark=None):
+        database = sqlite3.connect(dbname)
+        cookie = cherrypy.request.cookie
+        include_op = "include_op" in cookie and cookie["include_op"]
+        threads = db.thread_index(database, include_op=include_op)
+        usermap = create_usermap(database, threads, True)
+
+        if "username" in cookie and "auth_hash" in cookie:
+            user = db.user_resolve(database, cookie["username"].value)
+            if user and cookie["auth_hash"].value.lower() == user["auth_hash"]:
+                authorized_user = user
+            else:
+                authorized_user = None
+        else:
+            authorized_user = None
+
+        pinned_threads = [thread for thread in threads if thread["pinned"]]
+
+        if "bookmarks" in cookie:
+            user_bookmarks = json.loads(cookie["bookmarks"].value)
+            bookmarked_threads = [thread for thread in threads if thread["thread_id"] in user_bookmarks]
+            threads = [
+                thread for thread in threads
+                if not thread["pinned"]
+                and not thread["thread_id"] in user_bookmarks
+            ]
+        else:
+            bookmarked_threads = []
+            threads = [
+                thread for thread in threads
+                if not thread["pinned"]
+            ]
+
+        template = template_environment.get_template("threadIndex.html")
+        variables = {
+            "pinned_threads": pinned_threads,
+            "bookmarked_threads": bookmarked_threads,
+            "threads": threads,
+            "include_op": include_op,
+            "usermap": usermap,
+            "authorized_user": authorized_user,
+            "theme": self.get_theme(cherrypy.request)
+        }
+        return template.render(variables)
+
+
+    @cherrypy.expose
+    def thread(self, id=None):
+        if not id:
+            return "Please supply a Thread ID"
+        database = sqlite3.connect(dbname)
+        cookie = cherrypy.request.cookie
+        thread = db.thread_get(database, id)
+        usermap = create_usermap(database, thread["messages"])
+
+        if "username" in cookie and "auth_hash" in cookie:
+            user = db.user_resolve(database, cookie["username"].value)
+            if user and cookie["auth_hash"].value.lower() == user["auth_hash"]:
+                authorized_user = user
+            else:
+                authorized_user = None
+        else:
+            authorized_user = None
+
+        template = template_environment.get_template("threadLoad.html")
+        variables = {
+            "thread": thread,
+            "usermap": usermap,
+            "authorized_user": authorized_user,
+            "theme": self.get_theme(cherrypy.request)
+        }
+        return template.render(variables)
+
+
+    @cherrypy.expose
+    def threadSubmit(self, title=None, postContent=None):
+        database = sqlite3.connect(dbname)
+        cookie = cherrypy.request.cookie
+        if "username" in cookie and "auth_hash" in cookie:
+            user = db.user_resolve(database, cookie["username"].value)
+            if user and cookie["auth_hash"].value.lower() == user["auth_hash"]:
+                if title and postContent and title.strip() and postContent.strip():
+                    thread = db.thread_create(database, user["user_id"], postContent, title)
+                    raise cherrypy.HTTPRedirect("/thread?id=" + thread["thread_id"])
+                else:
+                    return "Post or Title are empty"
+        else:
+            return "Not logged in."
+
+
+
+    @cherrypy.expose
+    def threadReply(self, postContent=None, threadId=None):
+        if not threadId:
+            return "No thread ID provided."
+        elif not postContent:
+            return "Reply content is empty."
+        database = sqlite3.connect(dbname)
+        cookie = cherrypy.request.cookie
+        if "username" in cookie and "auth_hash" in cookie:
+            user = db.user_resolve(database, cookie["username"].value)
+            if user and cookie["auth_hash"].value.lower() != user["auth_hash"]:
+                return "Authorization info not correct."
+            if postContent.strip():
+                db.thread_reply(database, user["user_id"], threadId, postContent)
+            else:
+                return "Post reply is empty."
+            raise cherrypy.HTTPRedirect("/thread?id=" + threadId)
+        return "User not logged in"
+
+
 
 def api_http_error(status, message, traceback, version):
     return json.dumps(schema.error(
@@ -673,6 +944,17 @@ def api_http_error(status, message, traceback, version):
 API_CONFIG = {
     "/": {
         "error_page.default": api_http_error
+    }
+}
+
+WEB_CONFIG = {
+    "/css": {
+        "tools.staticdir.on": True,
+        "tools.staticdir.dir": abspath("css")
+    },
+    "/js": {
+        "tools.staticdir.on": True,
+        "tools.staticdir.dir": abspath("js")
     }
 }
 
@@ -691,7 +973,12 @@ def run():
                 "1ccf1ab6b9802b09a313be1478a4d614")
     finally:
         _c.close()
-    cherrypy.quickstart(API(), "/api", API_CONFIG)
+
+    cherrypy.tree.mount(API(), '/api', API_CONFIG)
+    cherrypy.tree.mount(HTML(), '/', WEB_CONFIG)
+    cherrypy.engine.start()
+    cherrypy.engine.block()
+    # cherrypy.quickstart(API(), "/api", API_CONFIG)
 
 
 def get_arg(key, default, get_value=True):

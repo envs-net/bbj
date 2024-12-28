@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+  <html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="x-ua-compatible" content="ie=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="/css/{{ theme }}.css">
+    <title>Thread Index: BBJ</title>
+  </head>
+  
+  <body>
+    <div id="navbar">
+      <span class="bbjLogo">BBJ</span>
+      {% if authorized_user %}
+      Account: <span class="color{{ authorized_user['color']}}">~{{ authorized_user["user_name"] }}</span>
+      {% else %}
+      <span>Not logged in.</span>
+      {% endif %}
+      {% if authorized_user %}
+      <a class="navbarLink" href="/account">Manage</a>
+      {% else %}
+      <a class="navbarLink" href="/account">Login</a>
+      {% endif %}
+    </div> 
+
+    {% if authorized_user %}
+    <a class="newPostButton" href="javascript:revealThreadCreateForm()">Create New Thread</a>
+    <div class="threadCreateBox" id="threadCreateBox" style="display: none;">
+      <form method="post" action="/threadSubmit">
+        <label for="title">Title:</label><br>
+        <input type="text" id="title" name="title"><br>
+        <label for="postContent">Content:</label><br>
+        <textarea type="text" id="postContent" name="postContent" rows="10" cols="50"></textarea><br>
+        <input type="submit" value="Post">
+      </form>
+    </div>
+    {% endif %}
+
+    {% if pinned_threads %}
+    <div class="pinnedContainer indexContainer">
+      <h2>Pinned Threads</h2>
+      {% for thread in pinned_threads %}
+      <div class="thread pinned">
+        <a class="threadLink" href="thread?id={{ thread['thread_id'] }}">{{ thread["title"] }}</a>
+        <br>
+        by <span class="color{{ usermap[thread['author']]['color'] }}">{{ usermap[thread["author"]]["user_name"] }}</span>
+        <br>
+        Created: <span class="datetime">{{ thread["created"] }}</span>
+        <br>
+        {{ thread["reply_count"] }} replies; active <span class="datetime">{{ thread["last_mod"] }}</span>
+        <br>
+        last active by <span class="color{{ usermap[thread['last_author']]['color'] }}">{{ usermap[thread["last_author"]]["user_name"] }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if bookmarked_threads %}
+    <div class="bookmarksContainer indexContainer">
+      <h2>Bookmarked Threads</h2>
+      {% for thread in bookmarked_threads %}
+      <div class="thread bookmarked">
+        <a class="threadLink" href="thread?id={{ thread['thread_id'] }}">{{ thread["title"] }}</a>
+        <br>
+        by <span class="color{{ usermap[thread['author']]['color'] }}">{{ usermap[thread["author"]]["user_name"] }}</span>
+        <br>
+        Created: <span class="datetime">{{ thread["created"] }}</span>
+        <br>
+        {{ thread["reply_count"] }} replies; active <span class="datetime">{{ thread["last_mod"] }}</span>
+        <br>
+        last active by <span class="color{{ usermap[thread['last_author']]['color'] }}">{{ usermap[thread["last_author"]]["user_name"] }}</span>
+        <br><a class="bookmarkLink" href="setBookmark?delBookmark={{ thread['thread_id'] }}">Unbookmark this thread.</a>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    
+    {% if threads %}
+    <div class="threadContainer indexContainer">
+      <h2>Threads</h2>
+      {% for thread in threads %}
+      <div class="thread">
+        <a class="threadLink" href="thread?id={{ thread['thread_id'] }}">{{ thread["title"] }}</a>
+        <br>
+        by <span class="color{{ usermap[thread['author']]['color'] }}">{{ usermap[thread["author"]]["user_name"] }}</span>
+        <br>
+        Created: <span class="datetime">{{ thread["created"] }}</span>
+        <br>
+        {{ thread["reply_count"] }} replies; active <span class="datetime">{{ thread["last_mod"] }}</span>
+        <br>
+        last active by <span class="color{{ usermap[thread['last_author']]['color'] }}">{{ usermap[thread["last_author"]]["user_name"] }}</span>
+        <br><a class="bookmarkLink" href="setBookmark?bookmarkId={{ thread['thread_id'] }}">Bookmark this thread.</a>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if not threads %}
+    <h2>There are no threads!</h2>
+    {% endif %}
+  </body>
+  <script src="/js/datetime.js"></script>
+  <script src="/js/postboxes.js"></script>
+
+  </html>replies

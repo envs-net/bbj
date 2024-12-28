@@ -2,3 +2,8 @@
 /config.json
 *.sqlite
 *__pycache__*
+/logs/
+/bin/
+/lib/
+/lib64
+/pyvenv.cfg

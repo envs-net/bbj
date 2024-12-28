@@ -1,13 +1,13 @@
-"""
+r"""
 A B A N D O N                               ,:
    A L L  H O P E                         ,' |
                                          /   :
                                       --'   /
-       F O R  Y E  W H O              \/ /:/
-           E N T E R  H E R E         / ://_\
+       F O R  Y E  W H O               / /:/
+           E N T E R  H E R E         / ://_
                                    __/   /
                                    )'-. /
- Crude hacks lie beneath us.      ./  :\
+ Crude hacks lie beneath us.      ./  :
                                     /.' '
 This module includes a couple     '/'
 of custom (GROAN) formatting    +
@@ -55,7 +55,7 @@ colon/space follow it. Thus, including [brackets like this] in a post body
 will NOT require you to escape it! Even [brackets: like this] is safe, because
 brackets is not a defined formatting parameter. So, any amount of unescaped brackets
 may exist within the body unless they mimic a directive. To escape a valid directive,
-escaping only the opening is suffiecient: \[bold: like this]. The literal body of
+escaping only the opening is sufficient: \[bold: like this]. The literal body of
 text outputted by that will be [bold: like this], with the backslash removed.
 
 Just like the brackets themselves, backslashes may occur freely within bodies,
@@ -123,19 +123,20 @@ def parse_segments(text, sanitize_linequotes=True):
 
 def sequential_expressions(string):
     """
-    Takes a string, sexpifies it, and returns a list of lists
-    who contain tuples. Each list of tuples represents a paragraph.
-    Within each paragraph, [0] is either None or a markup directive,
-    and [1] is the body of text to which it applies. This representation
-    is very easy to handle for a client. It semi-supports nesting:
-    eg, the expression [red: this [blue: is [green: mixed]]] will
-    return [("red", "this "), ("blue", "is "), ("green", "mixed")],
-    but this cannot effectively express an input like
-    [bold: [red: bolded colors.]], in which case the innermost
-    expression will take precedence. For the input:
-        "[bold: [red: this] is some shit [green: it cant handle]]"
+    Takes a string, creates key/value pairs of formatting directives, and
+    returns a list of lists who contain tuples. Each list of tuples represents
+    a paragraph. Within each paragraph, [0] is either None or a markup
+    directive, and [1] is the body of text to which it applies. This
+    representation is very easy to handle for a client. It semi-supports
+    nesting: eg, the expression [red: this [blue: is [green: mixed]]] will
+    return [("red", "this "), ("blue", "is "), ("green", "mixed")], but this
+    cannot effectively express an input like [bold: [red: bolded colors.]], in
+    which case the innermost expression will take precedence.
+    For the input:
+    "[bold: [red: this] is some stuff [green: it cant handle]]"
     you get:
-    [('red', 'this'), ('bold', ' is some shit '), ('green', 'it cant handle')]
+    [('red', 'this'), ('bold', ' is some stuff '), ('green', 'it cant handle')]
+
     """
     # abandon all hope ye who enter here
     directives = colors + markup
@@ -200,65 +201,3 @@ def raw(text):
     Just return the message in the same state that it was submitted.
     """
     return text
-
-
-def strip(text):
-    """
-    Returns the text with all formatting directives removed.
-    Not to be confused with `raw`.
-    """
-    pass # me the bong im boutta smash tha bish
-
-
-
-def entities(text):
-    """
-    Returns a tuple where [0] is raw text and [1] is documentation
-    """
-    # once someone asked me if i wanted a life
-    # and i said
-    pass
-
-
-
-def html(text):
-    """
-    Returns messages in html format, after being sent through markdown.
-    Color directives are given as:
-      <span color="{COLOR}" style="color: {COLOR};">content</span>
-
-    Directives may be nested. If you don't have access to a fully featured
-    and compliant html renderer in your client, you should use one of the
-    simpler directives like strip, indice, or raw.
-    """
-    return "where is your god now"
-
-
-# and this is drunk too
-def map_html(match):
-    return """
-    If there is a place you got to go
-    I am the one you need to know
-    I'm the Map!
-    I'm the Map!
-    I'm the Map!
-
-    If there is a place you got to get
-    I can get you there I bet
-    I'm the Map!
-    I'm the Map!
-    I'm the Map!
-
-    I'm the Map!
-
-    I'm the Map!
-    I'm the Map!
-
-    I'm the Map!
-    I'm the Map!
-    I'm the Map!
-
-    I'm the Map!
-    I'm the Map!
-    I'm the Map!
-    """

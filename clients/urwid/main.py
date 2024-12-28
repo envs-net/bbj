@@ -15,9 +15,6 @@ the keypress methods will call into this global `app` object.
 There are few additional functions that are defined outside
 of the App class. They are delegated to the very bottom of
 this file.
-
-Please mail me (~desvox) for feedback and for any of your
-"OH MY GOD WHY WOULD YOU DO THIS"'s or "PEP8 IS A THING"'s.
 """
 
 from network import BBJ, URLError
@@ -29,6 +26,7 @@ from getpass import getpass
 from subprocess import call
 from random import choice
 from code import interact
+from math import floor
 import rlcompleter
 import readline
 import tempfile
@@ -37,7 +35,7 @@ import json
 import os
 import re
 
-# XxX_N0_4rgP4rs3_XxX ###yoloswag
+
 def get_arg(key, default=None, get_value=True):
     try:
         spec = argv.index("--" + key)
@@ -48,29 +46,36 @@ def get_arg(key, default=None, get_value=True):
         exit("invalid format for --" + key)
     return value
 
-if get_arg("help", False, False):
-    print("""BBJ Urwid Client
+help_text = """BBJ Urwid Client
 Available options:
     --help: this message
     --https: enable use of https, requires host support
     --host <hostname>: the ip address/hostname/website/server to connect to
     --port <port>: the port to use when connecting to the host
     --user <username>: automatically connect with the given username
+    --thread <thread_id>: specify a thread_id to open immediately
 Available environment variables:
     BBJ_USER: set your username to log in automatically.
       If --user is passed, this is ignored.
     BBJ_PASSWORD: set your password to log in automatically.
       if the password is wrong, will prompt you as normal.
+    NO_COLOR: disable all color output from the program.
 Please note that these environment variables need to be exported, and are
-visible to all other programs run from your shell.""")
-    exit()
+visible to all other programs run from your shell.
+"""
 
+if get_arg("help", False, False):
+    print(help_text)
+    exit()
 try:
     network = BBJ(get_arg("host", "127.0.0.1"),
                   get_arg("port", 7099),
                   get_arg("https", False, False))
 except URLError as e:
+    print(help_text)
     # print the connection error in red
+    if os.getenv("NO_COLOR"):
+        exit("%s" % repr(e))
     exit("\033[0;31m%s\033[0m" % repr(e))
 
 obnoxious_logo = """
@@ -97,6 +102,16 @@ welcome = """>>> Welcome to Bulletin Butter & Jelly! ------------------@
 @_________________________________________________________@
 """
 
+welcome_monochrome = """>>> Welcome to Bulletin Butter & Jelly! ------------------@
+| BBJ is a persistent, chronologically ordered text       |
+| discussion board for tildes. You may log in,            |
+| register as a new user, or participate anonymously.     |
+|---------------------------------------------------------|
+| To go anon, just press enter. Otherwise, give me a name |
+|                 (registered or not)                     |
+@_________________________________________________________@
+"""
+
 anon_warn = """>>> \033[1;31mJust a reminder!\033[0m ----------------------------------@
 | You are not logged into BBJ, and are posting this    |
 | message anonymously. If you do not log in, you will  |
@@ -105,8 +120,16 @@ anon_warn = """>>> \033[1;31mJust a reminder!\033[0m ---------------------------
 |------------------------------------------------------|
 """
 
+anon_warn_monochrome = """>>> Just a reminder! ----------------------------------@
+| You are not logged into BBJ, and are posting this    |
+| message anonymously. If you do not log in, you will  |
+| not be able to edit or delete this message. This     |
+| warning can be disabled in the settings.             |
+|------------------------------------------------------|
+"""
+
 format_help = [
-    "Quick reminder: \[rainbow: expressions work like this]. You may scroll "
+    r"Quick reminder: \[rainbow: expressions work like this]. You may scroll "
     "this message, or press Q or escape to close it.\n\n"
 
     "BBJ supports **bolding**, __underlining__, and [rainbow: coloring] text "
@@ -132,21 +155,21 @@ format_help = [
 
     "You can use [rainbow: rainbow], [red: red], [yellow: yellow], [green: green], "
     "[blue: blue], [cyan: cyan], [magenta: and magenta], [dim: dim], **bold**, and __underline__ "
-    "inside of your posts. \**bold works like this\**, \__and underlines like this\__. "
-    "You can escape these expressions \\\**like this\\\**. They can span up to the full width "
+    r"inside of your posts. \**bold works like this\**, \__and underlines like this\__. "
+    r"You can escape these expressions \\**like this\\**. They can span up to the full width "
     "of the same line. They are best used on shorter phrases. "
     "However, you can use a different syntax for it, which is also required to use "
-    "colors: these expressions \[bold: look like this] and have less restrictions.",
+    r"colors: these expressions \[bold: look like this] and have less restrictions.",
 
     "The colon and the space following it are important. When you use these "
     "expressions, the __first__ space is not part of the content, but any characters, "
     "including spaces, that follow it are included in the body. The formatting will "
-    "apply until the closing ]. You can escape such an expression \\\[cyan: like this] "
-    "and can also \\[blue: escape \\\] other closing brackets] inside of it. Only "
+    r"apply until the closing ]. You can escape such an expression \\[cyan: like this] "
+    r"and can also \[blue: escape \\] other closing brackets] inside of it. Only "
     "closing brackets need to be escaped within an expression. Any backslashes used "
     "for escaping will not show in the body unless you use two slashes.",
 
-    "This peculiar syntax elimiates false positives. You never have to escape [normal] "
+    "This peculiar syntax eliminates false positives. You never have to escape [normal] "
     "brackets when using the board. Only expressions with **valid and defined** directives "
     "will be affected. [so: this is totally valid and requires no escapes] because 'so' is "
     "not a directive. [red this will pass too] because the colon is missing.",
@@ -188,7 +211,8 @@ general_help = [
     "To make scrolling faster, ", ("button", "hold shift"), " when using a control: it "
     "will repeat 5 times by default, and you can change this number in your settings.\n\n"
 
-    "In threads, The ", ("button", "<"), " and ", ("button", ">"), " keys will jump by "
+    "In threads, The ", ("button", "<"), " or ", ("button", ","), " keys, and ", ("button", ">"),
+    " or ", ("button", "."), " keys will jump by "
     "a chosen number of post headers. You can see the count inside of the footer line at "
     "the far right side: press ", ("button", "x"), " to cycle it upwards or ",
     ("button", "X"), " to cycle it downwards.\n\n"
@@ -227,8 +251,13 @@ default_prefs = {
     "custom_divider_char": False,
     "frame_title": "BBJ",
     "use_custom_frame_title": False,
+    "limit_max_text_width": False,
     "max_text_width": 80,
     "confirm_anon": True,
+    "information_density": "default",
+    "thread_divider": True,
+    "monochrome": False,
+    "enable_dim": True,
     "edit_escapes": {
         "abort": "f1",
         "focus": "f2",
@@ -271,6 +300,65 @@ colormap = [
     ("40", "light blue", "default"),
     ("50", "light cyan", "default"),
     ("60", "light magenta", "default")
+]
+
+no_dim_colormap = [
+    ("default", "default", "default"),
+    ("bar", "light magenta", "default"),
+    ("button", "light red", "default"),
+    ("quote", "brown", "default"),
+    ("opt_prompt", "black", "light gray"),
+    ("opt_header", "light cyan", "default"),
+    ("hover", "light cyan", "default"),
+    ("dim", "default", "default"),
+    ("bold", "default,bold", "default"),
+    ("underline", "default,underline", "default"),
+
+    # map the bbj api color values for display
+    ("0", "default", "default"),
+    ("1", "dark red", "default"),
+    # sounds ugly but brown is as close as we can get to yellow without being bold
+    ("2", "brown", "default"),
+    ("3", "dark green", "default"),
+    ("4", "dark blue", "default"),
+    ("5", "dark cyan", "default"),
+    ("6", "dark magenta", "default"),
+
+    # and have the bolded colors use the same values times 10
+    ("10", "light red", "default"),
+    ("20", "yellow", "default"),
+    ("30", "light green", "default"),
+    ("40", "light blue", "default"),
+    ("50", "light cyan", "default"),
+    ("60", "light magenta", "default")
+]
+
+monochrome_map = [
+    ("default", "default", "default"),
+    ("bar", "default", "default"),
+    ("button", "default", "default"),
+    ("quote", "default", "default"),
+    ("opt_prompt", "default", "light gray"),
+    ("opt_header", "default", "default"),
+    ("hover", "default", "default"),
+    ("dim", "default", "default"),
+    ("bold", "default,bold", "default"),
+    ("underline", "default,underline", "default"),
+
+    ("0", "default", "default"),
+    ("1", "default", "default"),
+    ("2", "default", "default"),
+    ("3", "default", "default"),
+    ("4", "default", "default"),
+    ("5", "default", "default"),
+    ("6", "default", "default"),
+
+    ("10", "default", "default"),
+    ("20", "default", "default"),
+    ("30", "default", "default"),
+    ("40", "default", "default"),
+    ("50", "default", "default"),
+    ("60", "default", "default")
 ]
 
 escape_map = {
@@ -326,11 +414,14 @@ themes = {
 rcpath = os.path.join(os.getenv("HOME"), ".bbjrc")
 markpath = os.path.join(os.getenv("HOME"), ".bbjmarks")
 pinpath = os.path.join(os.getenv("HOME"), ".bbjpins")
+credspath = os.path.join(os.getenv("HOME"), ".bbjcredentials")
+credentials_file_enabled = False
 
 class App(object):
     def __init__(self):
         self.prefs = bbjrc("load")
         self.client_pinned_threads = load_client_pins()
+        self.immediate_thread_load = []
         self.usermap = {}
         self.match_data = {
             "query": "",
@@ -363,10 +454,26 @@ class App(object):
             urwid.LineBox(self.box, **self.frame_theme(self.frame_title)),
             "default"
         )
+
+        if os.getenv("NO_COLOR") or self.prefs["monochrome"]:
+            selected_colormap = monochrome_map
+        elif self.prefs["enable_dim"]:
+            selected_colormap = colormap
+        else:
+            selected_colormap = no_dim_colormap
+
         self.loop = urwid.MainLoop(
             urwid.Frame(self.body),
-            palette=colormap,
+            palette=selected_colormap,
             handle_mouse=self.prefs["mouse_integration"])
+
+
+    def toggle_credentials_file(self, button, value):
+        if value:
+            credentials_file(create_if_not_exists=True)
+        else:
+            credentials_file(delete_if_exists=True)
+
 
 
     def frame_theme(self, title=""):
@@ -430,7 +537,10 @@ class App(object):
                 footer += " [@#] Search Control"
 
         else:
-            footer = bars["index"]
+            if network.user["is_admin"]:
+                footer = bars["index"] + " [\]Pinned"
+            else:
+                footer = bars["index"]
 
         self.set_footer(footer)
 
@@ -512,23 +622,33 @@ class App(object):
         self.body.attr_map = {None: attr[1]}
 
 
-    def readable_delta(self, modified):
+    def readable_delta(self, timestamp, compact=False):
         """
         Return a human-readable string representing the difference
         between a given epoch time and the current time.
         """
-        delta = time() - modified
+        # "New BBJ Features Thread by ~deltarae in 2024; ~dzwdz replied 15h ago; 4 total"
+        # "<1m ago", "Xm ago", "Xh Ym ago", "Xd ago", "Xw ago" "Xm ago" "<datestamp>"
+        delta = time() - timestamp
         hours, remainder = divmod(delta, 3600)
-        if hours > 48:
-            return self.timestring(modified)
+        if hours > 840: # 5 weeks
+            return self.timestring(timestamp)
+        elif hours > 336: # 2 weeks:
+            return "%d%s ago" % (floor(hours / 168), "w" if compact else " weeks")
+        elif hours > 168: # one week
+            return "%d%s ago" % (floor(hours / 168), "w" if compact else " week")
+        elif hours > 48:
+            return "%d%s ago" % (floor(hours / 24), "d" if compact else " days")
         elif hours > 1:
-            return "%d hours ago" % hours
+            return "%d%s ago" % (hours, "h" if compact else " hours")
         elif hours == 1:
-            return "about an hour ago"
+            return "1h ago" if compact else "about an hour ago"
         minutes, remainder = divmod(remainder, 60)
         if minutes > 1:
-            return "%d minutes ago" % minutes
-        return "less than a minute ago"
+            return "%d%s ago" % (minutes, "m" if compact else " minutes")
+        if minutes == 1:
+            return "1m ago" if compact else "1 minute ago"
+        return "<1m ago" if compact else "less than a minute ago"
 
 
     def quote_view_action(self, button, message):
@@ -583,7 +703,7 @@ class App(object):
             align=("relative", 50),
             valign=("relative", 50),
             height=len(buttons) + 3,
-            width=30
+            width=45
         )
 
 
@@ -700,7 +820,7 @@ class App(object):
         if msg_object["send_raw"]:
             return quotes
         for paragraph in msg_object["body"]:
-            # yes python is lisp fuck you
+            # yes python is lisp
             [quotes.append(cdr) for car, cdr in paragraph if car == "quote"]
         return [value_type(q) for q in quotes]
 
@@ -711,33 +831,72 @@ class App(object):
         """
         button = cute_button(">>", self.thread_load, thread["thread_id"])
         if pinned == "server":
-            title = urwid.AttrWrap(urwid.Text("[STICKY] " + thread["title"]), "20")
+            title = urwid.AttrWrap(urwid.Text("[PINNED] " + thread["title"]), "20")
         elif pinned == "client":
             title = urwid.AttrWrap(urwid.Text("[*] " + thread["title"]), "50")
         else:
             title = urwid.Text(thread["title"])
         user = self.usermap[thread["author"]]
-        dateline = [
-            ("default", "by "),
-            (str(user["color"]), "~%s " % user["user_name"]),
-            ("dim", "@ %s" % self.timestring(thread["created"]))
-        ]
-
-        infoline = "%d replies; active %s" % (
-            thread["reply_count"],
-            self.timestring(thread["last_mod"], "delta"))
-
         last_author = self.usermap[thread["last_author"]]
-        pile = [
-            urwid.Columns([(3, urwid.AttrMap(button, "button", "hover")), title]),
-            urwid.Text(dateline),
-            urwid.Text(("dim", infoline)),
-            urwid.Text([
-                ("dim", "last post by "),
-                (str(last_author["color"]), "~" + last_author["user_name"])
-            ]),
-            urwid.AttrMap(urwid.Divider(self.theme["divider"]), "dim")
-        ]
+
+        if self.prefs["information_density"] == "default":
+            dateline = [
+                ("default", "by "),
+                (str(user["color"]), "~%s " % user["user_name"]),
+                ("dim", "@ %s" % self.timestring(thread["created"]))
+            ]
+
+            infoline = "%d replies; active %s" % (
+                thread["reply_count"],
+                self.timestring(thread["last_mod"], "delta"))
+
+            pile = [
+                urwid.Columns([(3, urwid.AttrMap(button, "button", "hover")), title]),
+                urwid.Text(dateline),
+                urwid.Text(("dim", infoline)),
+                urwid.Text([
+                    ("dim", "last post by "),
+                    (str(last_author["color"]), "~" + last_author["user_name"])
+                ])
+            ]
+
+        elif self.prefs["information_density"] == "compact":
+            firstline = urwid.Columns([
+                (3, urwid.AttrMap(button, "button", "hover")),
+                (len(title._text), title)
+                ])
+            secondline = urwid.Text([
+                ("default", "by "),
+                (str(user["color"]), "~%s " % user["user_name"]),
+                ("dim", "@ %s; " % self.timestring(thread["created"])),
+                "%d replies; active %s" % (
+                    thread["reply_count"],
+                    self.timestring(thread["last_mod"], "delta"),
+                    )
+            ])
+            pile = [
+                firstline,
+                urwid.AttrMap(secondline, "dim"),
+            ]
+
+        elif self.prefs["information_density"] == "ultra":
+            # for some reason, text overflowing to the right side of terminal
+            # are deleted instead of being properly wrapped. but this is preferable
+            # behviour to what it was doing IMHO
+            info = urwid.Text([
+                ("dim", "; "),
+                (str(last_author["color"]), "~%s" % last_author["user_name"]),
+                ("dim", " replied %s; " % self.timestring(thread["last_mod"], "delta", compact=True)),
+                ("dim", "%d total" % thread["reply_count"])
+                ])
+            line = urwid.Columns([
+                (3, urwid.AttrMap(button, "button", "hover")),
+                (len(title.text), title),
+                (len(info.text), info)])
+            pile = [line]
+
+        if self.prefs["information_density"] != "ultra" and self.prefs["thread_divider"]:
+                pile.append(urwid.AttrMap(urwid.Divider(self.theme["divider"]), "dim"))
 
         if self.prefs["index_spacing"]:
             pile.insert(4, urwid.Divider())
@@ -754,7 +913,7 @@ class App(object):
         used in the index, this is not a pile widget, because using a pile
         causes line-by-line text scrolling to be unusable.
         """
-        info = "@ " + self.timestring(message["created"])
+        info = self.readable_delta(message["created"])
         if message["edited"]:
             info += " [edited]"
 
@@ -776,23 +935,27 @@ class App(object):
             ])
 
         head.message = message
+        if self.prefs["limit_max_text_width"]:
+            width = self.prefs["max_text_width"]
+        else:
+            width = "pack"
         return [
             head,
             urwid.Divider(),
             urwid.Padding(
                 MessageBody(message),
-                width=self.prefs["max_text_width"]),
+                width=width),
             urwid.Divider(),
             urwid.AttrMap(urwid.Divider(self.theme["divider"]), "dim")
         ]
 
 
-    def timestring(self, epoch, mode="both"):
+    def timestring(self, epoch, mode="both", compact=False):
         """
         Returns a string of time representing a given epoch and mode.
         """
         if mode == "delta":
-            return self.readable_delta(epoch)
+            return self.readable_delta(epoch, compact)
 
         date = datetime.fromtimestamp(epoch)
         if mode == "time":
@@ -852,13 +1015,18 @@ class App(object):
             # checks to make sure there are any posts to focus
             self.box.set_focus(0)
 
+        if self.immediate_thread_load :
+            thread_id = self.immediate_thread_load.pop()
+            self.last_index_pos = thread_id
+            self.thread_load(None, thread_id, set_index=False)
 
 
-    def thread_load(self, button, thread_id):
+
+    def thread_load(self, button, thread_id, set_index=True):
         """
         Open a thread.
         """
-        if app.mode == "index":
+        if set_index and app.mode == "index":
             # make sure the index goes back to this selected thread
             pos = self.get_focus_post(return_widget=True)
             self.last_index_pos = pos.thread["thread_id"]
@@ -1069,11 +1237,11 @@ class App(object):
             else: break
 
 
-    def goto_post(self, number):
+    def goto_post(self, number, size=(0, 0)):
         if self.mode != "thread":
             return
 
-        size = self.loop.screen_size
+        size = size if size else self.loop.screen_size
         new_pos = number * 5
         cur_pos = self.box.get_focus_path()[0]
 
@@ -1160,6 +1328,12 @@ class App(object):
         bbjrc("update", **self.prefs)
 
 
+    def set_density(self, button, new_state):
+        if new_state == True:
+            self.prefs["information_density"] = button.label
+            bbjrc("update", **self.prefs)
+
+
     def toggle_thread_pin(self, thread_id):
         pass
 
@@ -1173,7 +1347,7 @@ class App(object):
         self.loop.widget = self.loop.widget[0]
         self.loop.stop()
         call("clear", shell=True)
-        print(welcome)
+        print(welcome_monochrome if self.prefs["monochrome"] or os.getenv("NO_COLOR") else welcome)
         try:
             log_in(relog=True)
         except (KeyboardInterrupt, InterruptedError):
@@ -1207,20 +1381,20 @@ class App(object):
                     urwid_rainbows(
                         "This is BBJ, a client/server textboard made for envs.net!",
                         True),
-                    urwid.Text(("dim", "...by ~desvox")),
+                    # urwid.Text(("dim", "...by ~desvox")),
                     urwid.Divider(self.theme["divider"]),
                     urwid.Button("Post Formatting Help", self.formatting_help),
                     urwid.Divider(self.theme["divider"]),
                     urwid.Text(general_help)
                 ])),
-            **self.frame_theme("?????")
+            **self.frame_theme("BBJ Help")
         )
 
         app.loop.widget = urwid.Overlay(
             widget, app.loop.widget,
             align=("relative", 50),
             valign=("relative", 50),
-            width=30,
+            width=45,
             height=("relative", 60)
         )
 
@@ -1266,6 +1440,34 @@ class App(object):
         bbjrc("update", **self.prefs)
 
 
+    def toggle_monochrome(self, button, value):
+        self.prefs["monochrome"] = value
+
+        if os.getenv("NO_COLOR") or self.prefs["monochrome"]:
+            selected_colormap = monochrome_map
+        elif self.prefs["enable_dim"]:
+            selected_colormap = colormap
+        else:
+            selected_colormap = no_dim_colormap
+
+        self.loop.screen.register_palette(selected_colormap)
+        self.loop.screen.clear()
+        bbjrc("update", **self.prefs)
+
+    def toggle_dim(self, button, value):
+        self.prefs["enable_dim"] = value
+
+        if os.getenv("NO_COLOR") or self.prefs["monochrome"]:
+            selected_colormap = monochrome_map
+        elif self.prefs["enable_dim"]:
+            selected_colormap = colormap
+        else:
+            selected_colormap = no_dim_colormap
+
+        self.loop.screen.register_palette(selected_colormap)
+        self.loop.screen.clear()
+        bbjrc("update", **self.prefs)
+
     def toggle_mouse(self, button, value):
         self.prefs["mouse_integration"] = value
         self.loop.handle_mouse = value
@@ -1277,6 +1479,13 @@ class App(object):
         self.prefs["index_spacing"] = value
         bbjrc("update", **self.prefs)
 
+    def toggle_thread_divider(self, button, value):
+        self.prefs["thread_divider"] = value
+        bbjrc("update", **self.prefs)
+
+    def toggle_limit_width(self, button, value):
+        self.prefs["limit_max_text_width"] = value
+        bbjrc("update", **self.prefs)
 
     def change_username(self, *_):
         self.loop.stop()
@@ -1284,7 +1493,9 @@ class App(object):
         try:
             name = nameloop("Choose a new username", True)
             network.user_update(user_name=name)
-            motherfucking_rainbows("~~hello there %s~~" % name)
+            print_rainbows("~~hello there %s~~" % name)
+            if credentials_file_enabled:
+                credentials_file(update_credentials=True)
             sleep(0.8)
             self.loop.start()
             self.loop.widget = self.loop.widget[0]
@@ -1300,7 +1511,9 @@ class App(object):
         try:
             password = password_loop("Choose a new password. Can be empty", True)
             network.user_update(auth_hash=network._hash(password))
-            motherfucking_rainbows("SET NEW PASSWORD")
+            print_rainbows("SET NEW PASSWORD")
+            if credentials_file_enabled:
+                credentials_file(update_credentials=True)
             sleep(0.8)
             self.loop.start()
             self.loop.widget = self.loop.widget[0]
@@ -1403,6 +1616,12 @@ class App(object):
                 urwid.Button("Change username", on_press=self.change_username),
                 urwid.Button("Change password", on_press=self.change_password),
                 urwid.Divider(),
+                urwid.CheckBox(
+                    "Auto-login with credentials file",
+                    state=credentials_file_enabled,
+                    on_state_change=self.toggle_credentials_file
+                     ),
+                urwid.Divider(),
                 urwid.Text(("button", "Your color:")),
                 urwid.Text(("default", "This color will show on your "
                             "post headers and when people quote you.")),
@@ -1422,6 +1641,15 @@ class App(object):
         else:
             account_message = "You're browsing anonymously, and cannot set account preferences."
             account_stuff = [urwid.Button("Login/Register", on_press=self.relog)]
+
+        density_buttons = []
+        for value in ["default", "compact", "ultra"]:
+            urwid.RadioButton(
+                density_buttons, value,
+                state=self.prefs["information_density"] == value,
+                on_state_change=self.set_density
+                # user_data=value
+            )
 
         theme_buttons = []
         for name, theme in themes.items():
@@ -1485,6 +1713,21 @@ class App(object):
                      urwid.Text(("opt_header", "App"), 'center'),
                      urwid.Divider(),
                      urwid.CheckBox(
+                         "Monochrome mode",
+                         state=self.prefs["monochrome"],
+                         on_state_change=self.toggle_monochrome
+                     ),
+                     urwid.CheckBox(
+                         "Enable dim characters",
+                         state=self.prefs["enable_dim"],
+                         on_state_change=self.toggle_dim
+                     ),
+                     urwid.CheckBox(
+                         "Limit max message width (configure width below)",
+                         state=self.prefs["limit_max_text_width"],
+                         on_state_change=self.toggle_limit_width
+                     ),
+                     urwid.CheckBox(
                          "Dump rainbows on exit",
                          state=self.prefs["dramatic_exit"],
                          on_state_change=self.toggle_exit
@@ -1500,6 +1743,11 @@ class App(object):
                          on_state_change=self.toggle_spacing
                      ),
                      urwid.CheckBox(
+                         "Use dividers in thread list",
+                         state=self.prefs["thread_divider"],
+                         on_state_change=self.toggle_thread_divider
+                     ),
+                     urwid.CheckBox(
                          "Handle mouse (disrupts URL clicking)",
                          state=self.prefs["mouse_integration"],
                          on_state_change=self.toggle_mouse
@@ -1511,7 +1759,14 @@ class App(object):
                      urwid.Text("Restart to fully apply.")]:
             content.append(item)
 
+
         for item in theme_buttons:
+            content.append(item)
+
+        content.append(urwid.Divider())
+
+        content.append(urwid.Text(("button", "Information Density")))
+        for item in density_buttons:
             content.append(item)
 
         content.append(urwid.Divider())
@@ -1520,7 +1775,7 @@ class App(object):
             content.append(item)
 
         for item in [urwid.Divider(),
-                     urwid.Text(("button", "Max message width:")),
+                     urwid.Text(("button", "Limited message width:")),
                      urwid.AttrMap(width_edit, "opt_prompt"),
                      urwid.Divider(),
                      urwid.Text(("button", "Scroll multiplier when holding shift or scrolling with the mouse:")),
@@ -1566,7 +1821,7 @@ class App(object):
             widget, self.loop.widget,
             align="center",
             valign="middle",
-            width=30,
+            width=45,
             height=("relative", 75)
         )
 
@@ -1631,6 +1886,10 @@ class App(object):
         Dispatches the appropriate composure mode and widget based on application
         context and user preferences.
         """
+        if not network.user_auth  and not network.instance_info["allow_anon"]:
+            return self.temp_footer_message(
+                "Anonymous participation is disabled on this server")
+
         if self.mode == "index" and not title:
             return self.footer_prompt("Title", self.compose)
 
@@ -1720,15 +1979,18 @@ class MessageBody(urwid.Text):
     An urwid.Text object that works with the BBJ formatting directives.
     """
     def __init__(self, message):
+        self.post_id = message["post_id"]
         if message["send_raw"]:
             return super(MessageBody, self).__init__(message["body"])
 
-        self.post_id = message["post_id"]
         text_objects = message["body"]
         result = []
         last_directive = None
         for paragraph in text_objects:
             for directive, body in paragraph:
+                # these need to removed at the source, server side. but
+                # im lazy so here we go
+                body = body.replace("\r", "")
 
                 if directive in colornames:
                     color = str(colornames.index(directive))
@@ -1972,11 +2234,11 @@ class ExternalEditor(urwid.Terminal):
         self.endpoint = endpoint
         self.params = params
         env = os.environ
-        # barring this, programs will happily spit out unicode chars which
+        # OLD: barring this, programs will happily spit out unicode chars which
         # urwid+python3 seem to choke on. This seems to be a bug on urwid's
         # behalf. Users who take issue to programs trying to supress unicode
         # should use the options menu to switch to Overthrow mode.
-        env.update({"LANG": "POSIX"})
+        # OLD env.update({"LANG": "POSIX"})
         command = ["bash", "-c", "{} {}; echo Press any key to kill this window...".format(
             app.prefs["editor"], self.path)]
         super(ExternalEditor, self).__init__(command, env, app.loop, app.prefs["edit_escapes"]["abort"])
@@ -2025,7 +2287,7 @@ class ExternalEditor(urwid.Terminal):
             # else:
             app.loop.stop()
             call("clear", shell=True)
-            print(anon_warn)
+            print(anon_warn_monochrome if app.prefs["monochrome"] or os.getenv("NO_COLOR") else anon_warn)
             choice = paren_prompt(
                 "Post anonymously?", default="yes", choices=["Yes", "no"]
             )
@@ -2261,7 +2523,9 @@ class ActionBox(urwid.ListBox):
             call("clear", shell=True)
             readline.set_completer(rlcompleter.Completer().complete)
             readline.parse_and_bind("tab: complete")
-            interact(banner="Python " + version + "\nBBJ Interactive Console\nCtrl-D exits.", local=globals())
+            message = "Python " + version + "\nBBJ Interactive Console\nCtrl-D exits."
+            admin_message = '\nYou are an admin. Reset a user password by calling `reset_user_password("USERNAME")`'
+            interact(banner=message + admin_message if network.user["is_admin"] else message, local=globals())
             app.loop.start()
 
         elif app.mode == "thread" and not app.window_split and not overlay:
@@ -2289,9 +2553,8 @@ class ActionBox(urwid.ListBox):
 
 def frilly_exit():
     """
-    Exit with some flair. Will fill the screen with rainbows
-    and shit, or just say bye, depending on the user's bbjrc
-    setting, `dramatic_exit`
+    Exit with some flair. Will fill the screen with rainbows,
+    or just say bye, depending on the user's bbjrc setting, `dramatic_exit`
     """
     # sometimes this gets called before the loop is set up properly
     try: app.loop.stop()
@@ -2299,21 +2562,21 @@ def frilly_exit():
     if app.prefs["dramatic_exit"] and app.loop.screen_size:
         width, height = app.loop.screen_size
         for x in range(height - 1):
-            motherfucking_rainbows(
+            print_rainbows(
                 "".join([choice([" ", choice(punctuation)])
                         for x in range(width)]
                 ))
         out = "  ~~CoMeE BaCkK SooOn~~  0000000"
-        motherfucking_rainbows(out.zfill(width))
+        print_rainbows(out.zfill(width))
     else:
         call("clear", shell=True)
-        motherfucking_rainbows("Come back soon! <3")
+        print_rainbows("Come back soon! <3")
     exit()
 
 
 def cute_button(label, callback=None, data=None):
     """
-    Urwid's default buttons are shit, and they have ugly borders.
+    Urwid's default buttons have ugly borders.
     This function returns buttons that are a bit easier to love.
     """
     button = urwid.Button("", callback, data)
@@ -2332,10 +2595,18 @@ def urwid_rainbows(string, bold=False):
     return urwid.Text([(choice(colors), char) for char in string])
 
 
-def motherfucking_rainbows(string, inputmode=False, end="\n"):
+def print_rainbows(string, inputmode=False, end="\n"):
     """
     I cANtT FeELLE MyYE FACECsEE ANYrrMOROeeee
     """
+
+    prefs = bbjrc("load")
+    if prefs["monochrome"] or os.getenv("NO_COLOR"):
+        if inputmode:
+            return input("")
+        print(string, end="")
+        return print(end, end="")
+
     for character in string:
         print(choice(colors) + character, end="")
     print('\033[0m', end="")
@@ -2356,21 +2627,28 @@ def paren_prompt(text, positive=True, choices=[], function=input, default=None):
     if end != "?" and end in punctuation:
         text = text[0:-1]
 
-    mood = ("\033[1;36m", "\033[1;32m") if positive \
-           else ("\033[1;31m", "\033[1;33m")
+    monochrome = app.prefs["monochrome"] or os.getenv("NO_COLOR")
+
+    if monochrome:
+        mood = ("", "")
+    else:
+        mood = ("\033[1;36m", "\033[1;32m") if positive \
+            else ("\033[1;31m", "\033[1;33m")
 
     if choices:
         prompt = "%s{" % mood[0]
         for choice in choices:
             prompt += "{0}[{1}{0}]{2}{3} ".format(
-                "\033[1;35m", choice[0], mood[1], choice[1:])
+                "" if monochrome else "\033[1;35m",
+                choice[0], mood[1], choice[1:])
         formatted_choices = prompt[:-1] + ("%s}" % mood[0])
     else:
         formatted_choices = ""
 
     try:
-        response = function("{0}({1}{2}{0}){3}> \033[0m".format(
-            mood[0], mood[1], text, formatted_choices))
+        response = function("{0}({1}{2}{0}){3}> {4}".format(
+            mood[0], mood[1], text, formatted_choices,
+            "" if monochrome else "\033[0m"))
         if not choices:
             return response
         elif response == "":
@@ -2420,6 +2698,12 @@ def log_in(relog=False):
     chain. The user is run through this before starting the
     curses app.
     """
+    # this function sets the network auth settings, so no
+    # further action is needed
+    if not relog and credentials_file():
+        print("Logged in with credentials file! [%s]" % credspath)
+        sleep(0.5) # show the message for a moment
+        return
     if relog:
         name = sane_value("user_name", "Username", return_empty=True)
     else:
@@ -2427,7 +2711,7 @@ def log_in(relog=False):
            or os.getenv("BBJ_USER") \
            or sane_value("user_name", "Username", return_empty=True)
     if name == "":
-        motherfucking_rainbows("~~W3 4R3 4n0nYm0u5~~")
+        print_rainbows("~~W3 4R3 4n0nYm0u5~~")
     else:
         # ConnectionRefusedError means registered but needs a
         # password, ValueError means we need to register the user.
@@ -2438,7 +2722,7 @@ def log_in(relog=False):
                   if not relog else ""
             )
             # make it easy for people who use an empty password =)
-            motherfucking_rainbows("~~welcome back {}~~".format(network.user_name))
+            print_rainbows("~~welcome back {}~~".format(network.user_name))
 
         except ConnectionRefusedError:
             def login_loop(prompt, positive):
@@ -2449,10 +2733,10 @@ def log_in(relog=False):
                     login_loop("// R E J E C T E D //.", False)
 
             login_loop("Enter your password", True)
-            motherfucking_rainbows("~~welcome back {}~~".format(network.user_name))
+            print_rainbows("~~welcome back {}~~".format(network.user_name))
 
         except ValueError:
-            motherfucking_rainbows("Nice to meet'cha, %s!" % name)
+            print_rainbows("Nice to meet'cha, %s!" % name)
             response = paren_prompt(
                 "Register as %s?" % name,
                 choices=["yes!", "change name", "nevermind!"]
@@ -2466,7 +2750,9 @@ def log_in(relog=False):
 
             password = password_loop("Enter a password. It can be empty if you want")
             network.user_register(name, password)
-            motherfucking_rainbows("~~welcome to the party, %s!~~" % network.user_name)
+            print_rainbows("~~welcome to the party, %s!~~" % network.user_name)
+    if credentials_file():
+        credentials_file(update_credentials=True)
     sleep(0.5) # let that confirmation message shine
 
 
@@ -2573,14 +2859,92 @@ def wipe_screen(*_):
     app.loop.start()
 
 
+def create_credentials_file():
+    # if invalid login info is present this throws a
+    # ConnectionRefusedError
+    #
+    # verify that the user information is still correct.
+    # This method can only be called in the interface
+    # when the user is already logged in, but lets check
+    # anyways
+    global credentials_file_enabled
+    network.set_credentials(network.user_name, network.user_auth, hash_auth=False)
+    credentials_file_enabled = True
+    try:
+        os.remove(credspath)
+    except FileNotFoundError:
+        pass
+    with open(credspath, "w") as f:
+        json.dump({"user_name": network.user_name, "auth_hash": network.user_auth}, f, indent=2)
+    os.chmod(credspath, 0o600)
+    return True
+
+
+
+def credentials_file(delete_if_exists=False, create_if_not_exists=False, update_credentials=False):
+    global credentials_file_enabled
+    if update_credentials:
+        return create_credentials_file()
+    elif delete_if_exists:
+        try:
+            os.remove(credspath)
+        except FileNotFoundError:
+            pass
+        credentials_file_enabled = False
+        return False
+    try:
+        with open(credspath, "r") as f:
+            creds = json.load(f)
+        # always set this in case user messes it up externally
+        os.chmod(credspath, 0o600)
+        network.set_credentials(creds["user_name"], creds["auth_hash"], hash_auth=False)
+        credentials_file_enabled = True
+        return True
+    except FileNotFoundError:
+        if create_if_not_exists:
+            return create_credentials_file()
+        credentials_file_enabled = False
+        return False
+    except (json.decoder.JSONDecodeError, KeyError):
+        app.loop.stop()
+        wipe_screen()
+        exit("JSON input from %s is malformed. Please edit or delete the file." % credspath)
+    except (ValueError, ConnectionRefusedError):
+        try:
+            os.remove(credspath)
+        except FileNotFoundError:
+            pass
+        credentials_file_enabled = False
+        return False
+
+
+def reset_user_password(username):
+    """
+    This method is intended for admins to access via `$` key
+    (interactive python shell)
+    """
+    return network("reset_user_password", user=username)
+
+
 def main():
     global app
+    urwid.set_encoding("utf8")
     app = App()
+    thread_arg = get_arg("thread", False)
+    if thread_arg:
+        try:
+            # check to make sure thread_id exists. will throw
+            # ValueError if not
+            thread, usermap = network.thread_load(thread_arg)
+            app.immediate_thread_load.append(thread_arg)
+        except ValueError as e:
+            exit("Specified --thread does not exist")
     call("clear", shell=True)
-    motherfucking_rainbows(obnoxious_logo)
-    print(welcome)
+    print_rainbows(obnoxious_logo)
+    print(welcome_monochrome if app.prefs["monochrome"] or os.getenv("NO_COLOR") else welcome)
     try:
         log_in()
+
         app.index()
         app.loop.run()
     except (InterruptedError, KeyboardInterrupt):

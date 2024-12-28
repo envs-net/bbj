@@ -1,0 +1,108 @@
+body {
+    font-family: monospace;
+    font-size: 110%;
+    padding-top: 1em;
+}
+
+.thread {
+    padding: 1em;
+    margin: 1em;
+    border: 2px solid black;
+    max-width: 40em;
+}
+
+.pinned {
+    background-color: #c1ffea;
+}
+
+.bookmarked {
+    background-color: #c4e8ff;
+}
+
+.message {
+    padding: 1em;
+    margin: 1em;
+    border: 2px solid black;
+    max-width: 60em;
+}
+
+#navbar {
+    overflow: hidden;
+    background-color: #CCC;
+    font-size: 1em;
+    padding-top: 0.12em;
+    padding-bottom: 0.12em;
+    margin: 0px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+  }
+
+.bbjLogo {
+    background-color: black;
+    color: white;
+    padding: 0.10em;
+    padding-top: 0.12em;
+    padding-bottom: 0.12em;
+    margin: 0px;
+
+}
+
+.indexLink, .indexLink:visited {
+    background-color: black;
+    color: white;
+    padding: 0.10em;
+    padding-top: 0.12em;
+    padding-bottom: 0.12em;
+    margin: 0px;
+}
+
+.newPostButton {
+    font-size: 140%;
+    padding: 0.5em;
+    margin: 1em;
+    margin-top: 1.5em;
+    background-color: black;
+    color: white;
+    text-decoration: none;
+    display: inline-block;
+}
+
+.newReplyButton {
+    font-size: 120%;
+    padding: 0.25em;
+    background-color: black;
+    color: white;
+    text-decoration: none;
+    display: inline-block;
+}
+
+pre {
+    white-space: pre-wrap;
+}
+
+.color1 {
+    color: red;
+}
+
+.color2 {
+    color: #F39C11;
+}
+
+.color3 {
+    color: green;
+}
+
+.color4 {
+    color: blue;
+}
+
+.color5 {
+    color: #0dabbb;
+}
+
+.color6 {
+    color: magenta;
+}
+

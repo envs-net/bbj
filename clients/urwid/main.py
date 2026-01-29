@@ -35,6 +35,9 @@ import json
 import os
 import re
 
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning) 
+
 
 def get_arg(key, default=None, get_value=True):
     try:
@@ -538,7 +541,7 @@ class App(object):
 
         else:
             if network.user["is_admin"]:
-                footer = bars["index"] + " [\]Pinned"
+                footer = bars["index"] + " [\\]Pinned"
             else:
                 footer = bars["index"]
 
@@ -913,7 +916,13 @@ class App(object):
         used in the index, this is not a pile widget, because using a pile
         causes line-by-line text scrolling to be unusable.
         """
-        info = self.readable_delta(message["created"])
+        info = self.timestring(message['created'])
+        delta = time() - message["created"]
+        hours, _ = divmod(delta, 3600)
+        
+        if hours < 840:
+            info += f" ({self.readable_delta(message['created'])})"
+
         if message["edited"]:
             info += " [edited]"
 
@@ -1523,8 +1532,7 @@ class App(object):
             self.loop.start()
 
 
-    def live_time_render(self, editor, text, args):
-        widget, key = args
+    def live_time_render(self, widget, key, editor, text):
         try:
             rendered = datetime.fromtimestamp(time()).strftime(text)
             self.prefs[key] = text
@@ -1661,11 +1669,11 @@ class App(object):
 
         time_box = urwid.Text(self.timestring(time(), "time"))
         time_edit = Prompt(edit_text=self.prefs["time"])
-        urwid.connect_signal(time_edit, "change", self.live_time_render, (time_box, "time"))
+        urwid.connect_signal(time_edit, "change", self.live_time_render, user_args=(time_box, "time"))
 
         date_box = urwid.Text(self.timestring(time(), "date"))
         date_edit = Prompt(edit_text=self.prefs["date"])
-        urwid.connect_signal(date_edit, "change", self.live_time_render, (date_box, "date"))
+        urwid.connect_signal(date_edit, "change", self.live_time_render, user_args=(date_box, "date"))
 
         time_stuff = [
             urwid.Text(("button", "Time Format")),
@@ -1886,7 +1894,7 @@ class App(object):
         Dispatches the appropriate composure mode and widget based on application
         context and user preferences.
         """
-        if not network.user_auth  and not network.instance_info["allow_anon"]:
+        if not network.user_auth and not network.instance_info["allow_anon"]:
             return self.temp_footer_message(
                 "Anonymous participation is disabled on this server")
 
@@ -2713,6 +2721,8 @@ def log_in(relog=False):
     if name == "":
         print_rainbows("~~W3 4R3 4n0nYm0u5~~")
     else:
+        (name, code) = get_code_from(name)
+
         # ConnectionRefusedError means registered but needs a
         # password, ValueError means we need to register the user.
         try:
@@ -2745,15 +2755,37 @@ def log_in(relog=False):
             if response == "c":
                 name = nameloop("Pick a new name", True)
 
+                (name, code) = get_code_from(name)
+
             elif response == "n":
                 raise InterruptedError
 
             password = password_loop("Enter a password. It can be empty if you want")
-            network.user_register(name, password)
+
+            try:
+                network.user_register(name, password, code)
+
+            except Exception as err:
+                paren_prompt("%s" % err, False, function=print)
+                exit()
+
             print_rainbows("~~welcome to the party, %s!~~" % network.user_name)
     if credentials_file():
         credentials_file(update_credentials=True)
     sleep(0.5) # let that confirmation message shine
+
+
+def get_code_from(name):
+    code = None
+    name = name.split("@", 1)
+
+    if len(name) == 1:
+        name = name[0]
+
+    else:
+        (name, code) = name
+
+    return (name, code)
 
 
 def bbjrc(mode, **params):
